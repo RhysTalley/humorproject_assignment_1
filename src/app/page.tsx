@@ -108,10 +108,19 @@ export default function Home() {
             )}
           </div>
           {authStatus === "signedIn" && (
-            <p className="text-sm text-zinc-600">
-              {images.length} image{images.length === 1 ? "" : "s"} loaded from
-              Supabase.
-            </p>
+            <div className="text-sm text-zinc-600">
+              {isLoadingImages ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600" />
+                  Loading images...
+                </span>
+              ) : (
+                <span>
+                  {images.length} image{images.length === 1 ? "" : "s"} loaded
+                  from Supabase.
+                </span>
+              )}
+            </div>
           )}
         </header>
 
