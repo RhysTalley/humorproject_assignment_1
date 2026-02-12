@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
 
 const supabaseUrl =
   process.env.SUPABASE_URL ??
@@ -13,8 +14,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabaseServer = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabaseServer = createClient<Database>(
+  supabaseUrl,
+  supabaseAnonKey,
+  {
   auth: {
     persistSession: false,
   },
-});
+  },
+);
