@@ -455,14 +455,24 @@ export default function UploadCaptionsPage() {
                       key={caption.id}
                       className="flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm"
                     >
-                      <div className="aspect-[4/3] w-full overflow-hidden bg-zinc-100">
+                      <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-50">
                         {image?.url ? (
-                          <img
-                            src={image.url}
-                            alt={image.image_description ?? "Caption image"}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
+                          <>
+                            <div
+                              className="absolute inset-0 scale-110 blur-xl"
+                              style={{
+                                backgroundImage: `url(${image.url})`,
+                                backgroundSize: "cover",
+                                backgroundPosition: "center",
+                              }}
+                            />
+                            <img
+                              src={image.url}
+                              alt={image.image_description ?? "Caption image"}
+                              className="relative h-full w-full object-contain"
+                              loading="lazy"
+                            />
+                          </>
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
                             No image URL

@@ -397,18 +397,28 @@ export default function UploadsPage() {
                   >
                     <div className="relative">
                       <Link href={`/uploads/${image.id}`} className="block">
-                        <div className="aspect-[4/3] w-full overflow-hidden bg-zinc-100">
-                          {image.url ? (
+                      <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-50">
+                        {image.url ? (
+                          <>
+                            <div
+                              className="absolute inset-0 scale-110 blur-xl"
+                              style={{
+                                backgroundImage: `url(${image.url})`,
+                                backgroundSize: "cover",
+                                backgroundPosition: "center",
+                              }}
+                            />
                             <img
                               src={image.url}
                               alt="Uploaded image"
-                              className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                              className="relative h-full w-full object-contain transition duration-200 group-hover:scale-[1.02]"
                             />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
-                              No image available
-                            </div>
-                          )}
+                          </>
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
+                            No image available
+                          </div>
+                        )}
                         </div>
                       </Link>
                       <button

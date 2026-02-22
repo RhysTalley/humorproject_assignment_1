@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import type { Database } from "@/types/supabase";
 import TopNav from "@/components/TopNav";
@@ -17,8 +17,16 @@ type CaptionWithImage = CaptionRow & {
   } | null;
 };
 
+type CaptionFilter =
+  | "popular_all"
+  | "popular_month"
+  | "popular_week"
+  | "recent"
+  | "hot";
+
 const PAGE_SIZE = 50;
 const VOTE_STORAGE_KEY_PREFIX = "caption_votes_by_user";
+const FILTER_STORAGE_KEY = "caption_filter_selection";
 
 const getVoteStorageKey = (userId: string) =>
   `${VOTE_STORAGE_KEY_PREFIX}:${userId}`;
@@ -51,10 +59,24 @@ const saveVotesToStorage = (
   }
 };
 
+const toUtcIso = (date: Date) => date.toISOString();
+
+const getUtcMonthStart = (date: Date) =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+
+const getUtcWeekStart = (date: Date) => {
+  const day = date.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1;
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - diff),
+  );
+};
+
 export default function Home() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [captions, setCaptions] = useState<CaptionWithImage[]>([]);
+  const [filter, setFilter] = useState<CaptionFilter>("popular_week");
   const [votesByCaption, setVotesByCaption] = useState<Record<string, 1 | -1>>(
     {},
   );
@@ -64,6 +86,14 @@ export default function Home() {
   const [isLoadingVotes, setIsLoadingVotes] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [popularMenuOpen, setPopularMenuOpen] = useState(false);
+  const popularMenuRef = useRef<HTMLDivElement | null>(null);
+  const popularLabel =
+    filter === "popular_week"
+      ? "This week"
+      : filter === "popular_month"
+        ? "This month"
+        : "All time";
 
   useEffect(() => {
     let isMounted = true;
@@ -110,6 +140,44 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(FILTER_STORAGE_KEY);
+      if (
+        stored === "popular_all" ||
+        stored === "popular_month" ||
+        stored === "popular_week" ||
+        stored === "recent" ||
+        stored === "hot"
+      ) {
+        setFilter(stored);
+      }
+    } catch {
+      // Ignore storage failures.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(FILTER_STORAGE_KEY, filter);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [filter]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        popularMenuRef.current &&
+        !popularMenuRef.current.contains(event.target as Node)
+      ) {
+        setPopularMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
     const redirectTo = `${window.location.origin}/auth/callback`;
@@ -140,15 +208,86 @@ export default function Home() {
     setErrorMessage(null);
     const start = (nextPage - 1) * PAGE_SIZE;
     const end = start + PAGE_SIZE - 1;
-    const { data, error } = await supabaseClient
+    const now = new Date();
+    const weekStart = getUtcWeekStart(now);
+    const monthStart = getUtcMonthStart(now);
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    if (filter === "hot") {
+      const { data: recentVotes, error: voteError } = await supabaseClient
+        .from("caption_votes")
+        .select("caption_id")
+        .eq("vote_value", 1)
+        .gte("created_datetime_utc", toUtcIso(oneDayAgo));
+
+      if (voteError) {
+        setErrorMessage(voteError.message);
+        setIsLoadingCaptions(false);
+        return;
+      }
+
+      const uniqueIds = Array.from(
+        new Set((recentVotes ?? []).map((vote) => vote.caption_id)),
+      );
+
+      if (uniqueIds.length === 0) {
+        if (reset) {
+          setCaptions([]);
+        }
+        setHasMore(false);
+        setIsLoadingCaptions(false);
+        return;
+      }
+
+      const { data, error } = await supabaseClient
+        .from("captions")
+        .select(
+          "id, content, created_datetime_utc, image_id, images!inner ( id, url, image_description )",
+        )
+        .not("content", "is", null)
+        .not("images.url", "is", null)
+        .gte("created_datetime_utc", toUtcIso(threeDaysAgo))
+        .in("id", uniqueIds)
+        .order("like_count", { ascending: false })
+        .range(start, end);
+
+      if (error) {
+        setErrorMessage(error.message);
+        setIsLoadingCaptions(false);
+        return;
+      }
+
+      const fetched = (data ?? []) as CaptionWithImage[];
+      setCaptions((prev) => (reset ? fetched : [...prev, ...fetched]));
+      setHasMore(fetched.length === PAGE_SIZE);
+      setIsLoadingCaptions(false);
+      return;
+    }
+
+    let query = supabaseClient
       .from("captions")
       .select(
         "id, content, created_datetime_utc, image_id, images!inner ( id, url, image_description )",
       )
-      .order("like_count", { ascending: false })
-      .eq("is_public", true)
-      .not("images.url", "is", null)
-      .range(start, end);
+      .not("content", "is", null)
+      .not("images.url", "is", null);
+
+    if (filter === "popular_month") {
+      query = query.gte("created_datetime_utc", toUtcIso(monthStart));
+    }
+
+    if (filter === "popular_week") {
+      query = query.gte("created_datetime_utc", toUtcIso(weekStart));
+    }
+
+    if (filter === "recent") {
+      query = query.order("created_datetime_utc", { ascending: false });
+    } else {
+      query = query.order("like_count", { ascending: false });
+    }
+
+    const { data, error } = await query.range(start, end);
 
     if (error) {
       setErrorMessage(error.message);
@@ -166,7 +305,7 @@ export default function Home() {
     if (authStatus !== "signedIn") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadCaptions(1, true);
-  }, [authStatus]);
+  }, [authStatus, filter]);
 
   useEffect(() => {
     if (authStatus !== "signedIn" || !currentUserId) return;
@@ -289,10 +428,140 @@ export default function Home() {
       <main className="mx-auto max-w-6xl">
         <TopNav authStatus={authStatus} onSignOut={handleSignOut} />
 
-        <header className="mb-8 flex flex-col gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Caption Ratings
-          </h1>
+        <header className="mb-8 flex flex-col gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              All Captions
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-zinc-600">
+              <div className="relative" ref={popularMenuRef}>
+                <div
+                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 ${
+                    filter.startsWith("popular")
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"
+                  }`}
+                >
+                  <button
+                    className="text-sm font-medium"
+                    onClick={() => {
+                      setFilter("popular_week");
+                      setPage(1);
+                      setHasMore(true);
+                      setCaptions([]);
+                    }}
+                    type="button"
+                  >
+                    Most popular · {popularLabel}
+                  </button>
+                  <button
+                    className="cursor-pointer text-sm leading-none text-zinc-500 hover:text-zinc-800"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPopularMenuOpen((prev) => !prev);
+                    }}
+                    type="button"
+                    aria-expanded={popularMenuOpen}
+                    aria-haspopup="menu"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.25a.75.75 0 0 1-1.06 0L5.25 8.29a.75.75 0 0 1-.02-1.08Z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                {popularMenuOpen && (
+                  <div className="absolute left-0 z-10 mt-2 w-40 rounded-xl border border-zinc-200 bg-white p-2 text-sm text-zinc-700 shadow-lg">
+                    <button
+                      className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left hover:bg-zinc-100 ${
+                        filter === "popular_all" ? "text-blue-700" : ""
+                      }`}
+                      onClick={() => {
+                        setFilter("popular_all");
+                        setPage(1);
+                        setHasMore(true);
+                        setCaptions([]);
+                        setPopularMenuOpen(false);
+                      }}
+                      type="button"
+                    >
+                      All time
+                    </button>
+                    <button
+                      className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left hover:bg-zinc-100 ${
+                        filter === "popular_month" ? "text-blue-700" : ""
+                      }`}
+                      onClick={() => {
+                        setFilter("popular_month");
+                        setPage(1);
+                        setHasMore(true);
+                        setCaptions([]);
+                        setPopularMenuOpen(false);
+                      }}
+                      type="button"
+                    >
+                      This month
+                    </button>
+                    <button
+                      className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left hover:bg-zinc-100 ${
+                        filter === "popular_week" ? "text-blue-700" : ""
+                      }`}
+                      onClick={() => {
+                        setFilter("popular_week");
+                        setPage(1);
+                        setHasMore(true);
+                        setCaptions([]);
+                        setPopularMenuOpen(false);
+                      }}
+                      type="button"
+                    >
+                      This week
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                className={`rounded-full border px-4 py-2 ${
+                  filter === "recent"
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"
+                }`}
+                onClick={() => {
+                  setFilter("recent");
+                  setPage(1);
+                  setHasMore(true);
+                  setCaptions([]);
+                }}
+                type="button"
+              >
+                Most recent
+              </button>
+              <button
+                className={`rounded-full border px-4 py-2 ${
+                  filter === "hot"
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"
+                }`}
+                onClick={() => {
+                  setFilter("hot");
+                  setPage(1);
+                  setHasMore(true);
+                  setCaptions([]);
+                }}
+                type="button"
+              >
+                Hot
+              </button>
+            </div>
+          </div>
           {authStatus === "signedIn" && (
             <div className="text-sm text-zinc-600">
               {isLoadingCaptions ? (
@@ -373,14 +642,24 @@ export default function Home() {
                     key={caption.id}
                     className="flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm"
                   >
-                    <div className="aspect-[4/3] w-full overflow-hidden bg-zinc-100">
+                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-50">
                       {caption.images?.url ? (
-                        <img
-                          src={caption.images.url}
-                          alt={caption.images.image_description ?? "Caption image"}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
+                        <>
+                          <div
+                            className="absolute inset-0 scale-110 blur-xl"
+                            style={{
+                              backgroundImage: `url(${caption.images.url})`,
+                              backgroundSize: "cover",
+                              backgroundPosition: "center",
+                            }}
+                          />
+                          <img
+                            src={caption.images.url}
+                            alt={caption.images.image_description ?? "Caption image"}
+                            className="relative h-full w-full object-contain"
+                            loading="lazy"
+                          />
+                        </>
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
                           No image URL
