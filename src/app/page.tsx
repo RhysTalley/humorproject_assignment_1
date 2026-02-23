@@ -61,16 +61,11 @@ const saveVotesToStorage = (
 
 const toUtcIso = (date: Date) => date.toISOString();
 
-const getUtcMonthStart = (date: Date) =>
-  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+const getUtcThirtyDaysAgo = (date: Date) =>
+  new Date(date.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-const getUtcWeekStart = (date: Date) => {
-  const day = date.getUTCDay();
-  const diff = day === 0 ? 6 : day - 1;
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - diff),
-  );
-};
+const getUtcSevenDaysAgo = (date: Date) =>
+  new Date(date.getTime() - 7 * 24 * 60 * 60 * 1000);
 
 export default function Home() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
@@ -90,9 +85,9 @@ export default function Home() {
   const popularMenuRef = useRef<HTMLDivElement | null>(null);
   const popularLabel =
     filter === "popular_week"
-      ? "This week"
+      ? "Last 7 days"
       : filter === "popular_month"
-        ? "This month"
+        ? "Last 30 days"
         : "All time";
 
   useEffect(() => {
@@ -209,8 +204,8 @@ export default function Home() {
     const start = (nextPage - 1) * PAGE_SIZE;
     const end = start + PAGE_SIZE - 1;
     const now = new Date();
-    const weekStart = getUtcWeekStart(now);
-    const monthStart = getUtcMonthStart(now);
+    const weekStart = getUtcSevenDaysAgo(now);
+    const monthStart = getUtcThirtyDaysAgo(now);
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -452,7 +447,8 @@ export default function Home() {
                     }}
                     type="button"
                   >
-                    Most popular · {popularLabel}
+                    Most popular
+                    {filter.startsWith("popular") ? ` · ${popularLabel}` : ""}
                   </button>
                   <button
                     className="cursor-pointer text-sm leading-none text-zinc-500 hover:text-zinc-800"
