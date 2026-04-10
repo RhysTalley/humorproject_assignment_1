@@ -1,5 +1,18 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Supabase MCP
+
+This project's Supabase `project_ref` is `qihsgnfjqmkjmoowyfbn`.
+
+To configure Codex MCP for this repo:
+
+```bash
+codex mcp add supabase --url "https://mcp.supabase.com/mcp?project_ref=qihsgnfjqmkjmoowyfbn&read_only=true"
+codex mcp login supabase
+```
+
+If the MCP tools still do not appear after login, restart the Codex session so it reloads the configured servers.
+
 ## Getting Started
 
 First, run the development server:

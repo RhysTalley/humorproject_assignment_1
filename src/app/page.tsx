@@ -26,6 +26,7 @@ type CaptionFilter =
 const PAGE_SIZE = 50;
 const VOTE_STORAGE_KEY_PREFIX = "caption_votes_by_user";
 const FILTER_STORAGE_KEY = "caption_filter_selection";
+const SORT_TOOLTIP_DISMISSED_KEY = "sort_tooltip_dismissed";
 
 const getVoteStorageKey = (userId: string) =>
   `${VOTE_STORAGE_KEY_PREFIX}:${userId}`;
@@ -78,9 +79,9 @@ export default function Home() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [captions, setCaptions] = useState<CaptionWithImage[]>([]);
-  const [filter, setFilter] = useState<CaptionFilter>("popular_week");
+  const [filter, setFilter] = useState<CaptionFilter>("popular_all");
   const [lastPopularFilter, setLastPopularFilter] =
-    useState<CaptionFilter>("popular_week");
+    useState<CaptionFilter>("popular_all");
   const [votesByCaption, setVotesByCaption] = useState<Record<string, 1 | -1>>(
     {},
   );
@@ -94,6 +95,7 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [popularMenuOpen, setPopularMenuOpen] = useState(false);
+  const [showSortTooltip, setShowSortTooltip] = useState(false);
   const popularMenuRef = useRef<HTMLDivElement | null>(null);
   const popularLabel =
     filter === "popular_week"
@@ -149,24 +151,25 @@ export default function Home() {
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(FILTER_STORAGE_KEY);
+      const storedFilter = window.localStorage.getItem(FILTER_STORAGE_KEY);
       if (
-        stored === "popular_all" ||
-        stored === "popular_month" ||
-        stored === "popular_week" ||
-        stored === "recent"
+        storedFilter === "popular_all" ||
+        storedFilter === "popular_month" ||
+        storedFilter === "popular_week" ||
+        storedFilter === "recent"
       ) {
-        setFilter(stored);
-        if (
-          stored === "popular_all" ||
-          stored === "popular_month" ||
-          stored === "popular_week"
-        ) {
-          setLastPopularFilter(stored);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setFilter(storedFilter);
+        if (storedFilter !== "recent") {
+          setLastPopularFilter(storedFilter);
         }
       }
+
+      setShowSortTooltip(
+        window.localStorage.getItem(SORT_TOOLTIP_DISMISSED_KEY) !== "true",
+      );
     } catch {
-      // Ignore storage failures.
+      setShowSortTooltip(true);
     }
   }, []);
 
@@ -175,16 +178,6 @@ export default function Home() {
       window.localStorage.setItem(FILTER_STORAGE_KEY, filter);
     } catch {
       // Ignore storage failures.
-    }
-  }, [filter]);
-
-  useEffect(() => {
-    if (
-      filter === "popular_all" ||
-      filter === "popular_month" ||
-      filter === "popular_week"
-    ) {
-      setLastPopularFilter(filter);
     }
   }, [filter]);
 
@@ -200,6 +193,22 @@ export default function Home() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const applyFilter = (nextFilter: CaptionFilter) => {
+    setPopularMenuOpen(false);
+
+    if (filter === nextFilter) {
+      return;
+    }
+
+    setFilter(nextFilter);
+    if (nextFilter !== "recent") {
+      setLastPopularFilter(nextFilter);
+    }
+    setPage(1);
+    setHasMore(true);
+    setCaptions([]);
+  };
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
@@ -234,7 +243,6 @@ export default function Home() {
     const now = new Date();
     const weekStart = getUtcSevenDaysAgo(now);
     const monthStart = getUtcThirtyDaysAgo(now);
-    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
     let query = supabaseClient
       .from("captions")
       .select(
@@ -408,128 +416,163 @@ export default function Home() {
     }
   };
 
+  const dismissSortTooltip = () => {
+    setShowSortTooltip(false);
+    try {
+      window.localStorage.setItem(SORT_TOOLTIP_DISMISSED_KEY, "true");
+    } catch {
+      // Ignore storage failures.
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-12 text-zinc-950">
       <main className="mx-auto max-w-6xl">
         <TopNav authStatus={authStatus} onSignOut={handleSignOut} />
 
         <header className="mb-8 flex flex-col gap-4">
-          <div>
+          <div className="rounded-[2rem] border border-zinc-200 bg-white/90 p-6 shadow-sm backdrop-blur">
             <h1 className="text-3xl font-semibold tracking-tight">
               All Captions
             </h1>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-zinc-600">
-              <div className="relative" ref={popularMenuRef}>
-                <div
-                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 ${
-                    filter.startsWith("popular")
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"
-                  }`}
-                >
-                  <button
-                    className="text-sm font-medium"
-                    onClick={() => {
-                      setFilter(lastPopularFilter);
-                      setPage(1);
-                      setHasMore(true);
-                      setCaptions([]);
-                    }}
-                    type="button"
-                  >
-                    Most popular
-                    {filter.startsWith("popular") ? ` · ${popularLabel}` : ""}
-                  </button>
-                  <button
-                    className="cursor-pointer text-sm leading-none text-zinc-500 hover:text-zinc-800"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setPopularMenuOpen((prev) => !prev);
-                    }}
-                    type="button"
-                    aria-expanded={popularMenuOpen}
-                    aria-haspopup="menu"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.25a.75.75 0 0 1-1.06 0L5.25 8.29a.75.75 0 0 1-.02-1.08Z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+            <p className="mt-2 max-w-2xl text-sm text-zinc-600">
+              Start with the highest-rated captions, then switch the time range
+              or recency filter to explore faster.
+            </p>
+            <div className="relative mt-5 rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-amber-50 p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-700">
+                    Sort Captions
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600">
+                    Ranking by upvotes is the fastest way to find the strongest
+                    captions.
+                  </p>
                 </div>
-                {popularMenuOpen && (
-                  <div className="absolute left-0 z-10 mt-2 w-40 rounded-xl border border-zinc-200 bg-white p-2 text-sm text-zinc-700 shadow-lg">
+                {showSortTooltip && (
+                  <div className="max-w-sm rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm text-zinc-700 shadow-md">
+                    <p className="font-medium text-zinc-900">
+                      Tip: try Top All Time first
+                    </p>
+                    <p className="mt-1">
+                      Use these controls to switch between the best captions of
+                      all time, this month, this week, or the newest posts.
+                    </p>
                     <button
-                      className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left hover:bg-zinc-100 ${
-                        filter === "popular_all" ? "text-blue-700" : ""
-                      }`}
-                      onClick={() => {
-                        setFilter("popular_all");
-                        setPage(1);
-                        setHasMore(true);
-                        setCaptions([]);
-                        setPopularMenuOpen(false);
-                      }}
+                      className="mt-3 inline-flex rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                      onClick={dismissSortTooltip}
                       type="button"
                     >
-                      All time
-                    </button>
-                    <button
-                      className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left hover:bg-zinc-100 ${
-                        filter === "popular_month" ? "text-blue-700" : ""
-                      }`}
-                      onClick={() => {
-                        setFilter("popular_month");
-                        setPage(1);
-                        setHasMore(true);
-                        setCaptions([]);
-                        setPopularMenuOpen(false);
-                      }}
-                      type="button"
-                    >
-                      This month
-                    </button>
-                    <button
-                      className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left hover:bg-zinc-100 ${
-                        filter === "popular_week" ? "text-blue-700" : ""
-                      }`}
-                      onClick={() => {
-                        setFilter("popular_week");
-                        setPage(1);
-                        setHasMore(true);
-                        setCaptions([]);
-                        setPopularMenuOpen(false);
-                      }}
-                      type="button"
-                    >
-                      This week
+                      Got it
                     </button>
                   </div>
                 )}
               </div>
-              <button
-                className={`rounded-full border px-4 py-2 ${
-                  filter === "recent"
-                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                    : "border-zinc-300 text-zinc-700 hover:bg-zinc-100"
-                }`}
-                onClick={() => {
-                  setFilter("recent");
-                  setPage(1);
-                  setHasMore(true);
-                  setCaptions([]);
-                }}
-                type="button"
-              >
-                Most recent
-              </button>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-medium text-zinc-600">
+                <div className="relative" ref={popularMenuRef}>
+                  <div
+                    className={`inline-flex items-center gap-2 rounded-full border px-5 py-3 text-base shadow-sm ${
+                      filter.startsWith("popular")
+                        ? "border-blue-500 bg-blue-600 text-white"
+                        : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                    }`}
+                  >
+                    <button
+                      className="font-semibold"
+                      onClick={() => {
+                        applyFilter(lastPopularFilter);
+                      }}
+                      type="button"
+                    >
+                      Top captions
+                      {filter.startsWith("popular") ? ` · ${popularLabel}` : ""}
+                    </button>
+                    <button
+                      className={`cursor-pointer text-sm leading-none ${
+                        filter.startsWith("popular")
+                          ? "text-blue-100 hover:text-white"
+                          : "text-zinc-500 hover:text-zinc-800"
+                      }`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPopularMenuOpen((prev) => !prev);
+                      }}
+                      type="button"
+                      aria-expanded={popularMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="Choose top caption time range"
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.25a.75.75 0 0 1-1.06 0L5.25 8.29a.75.75 0 0 1-.02-1.08Z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  {popularMenuOpen && (
+                    <div className="absolute left-0 z-10 mt-2 w-48 rounded-2xl border border-zinc-200 bg-white p-2 text-sm text-zinc-700 shadow-lg">
+                      <button
+                        className={`w-full cursor-pointer rounded-xl px-3 py-2 text-left hover:bg-zinc-100 ${
+                          filter === "popular_all" ? "bg-blue-50 text-blue-700" : ""
+                        }`}
+                        onClick={() => {
+                          applyFilter("popular_all");
+                        }}
+                        type="button"
+                      >
+                        Top all time
+                      </button>
+                      <button
+                        className={`w-full cursor-pointer rounded-xl px-3 py-2 text-left hover:bg-zinc-100 ${
+                          filter === "popular_month" ? "bg-blue-50 text-blue-700" : ""
+                        }`}
+                        onClick={() => {
+                          applyFilter("popular_month");
+                        }}
+                        type="button"
+                      >
+                        Top this month
+                      </button>
+                      <button
+                        className={`w-full cursor-pointer rounded-xl px-3 py-2 text-left hover:bg-zinc-100 ${
+                          filter === "popular_week" ? "bg-blue-50 text-blue-700" : ""
+                        }`}
+                        onClick={() => {
+                          applyFilter("popular_week");
+                        }}
+                        type="button"
+                      >
+                        Top this week
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  className={`rounded-full border px-5 py-3 text-base font-semibold shadow-sm ${
+                    filter === "recent"
+                      ? "border-blue-500 bg-blue-600 text-white"
+                      : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                  }`}
+                  onClick={() => {
+                    applyFilter("recent");
+                  }}
+                  type="button"
+                >
+                  Newest first
+                </button>
+              </div>
+              <p className="mt-3 text-xs text-zinc-500">
+                Top filters rank captions by upvotes. Newest first sorts by the
+                latest submissions.
+              </p>
             </div>
           </div>
           {authStatus === "signedIn" && (

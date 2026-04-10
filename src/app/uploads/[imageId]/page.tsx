@@ -12,6 +12,8 @@ type ImageRow = Database["public"]["Tables"]["images"]["Row"];
 
 type CaptionRow = Database["public"]["Tables"]["captions"]["Row"];
 
+const HUMOR_FLAVOR_ID = 35;
+
 const VOTE_STORAGE_KEY_PREFIX = "caption_votes_by_user";
 
 const getVoteStorageKey = (userId: string) =>
@@ -363,7 +365,7 @@ export default function UploadCaptionsPage() {
               Authorization: `Bearer ${session.access_token}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ imageId }),
+            body: JSON.stringify({ imageId, humorFlavorId: HUMOR_FLAVOR_ID }),
           },
         );
         responses.push(response);
@@ -398,10 +400,22 @@ export default function UploadCaptionsPage() {
           </h1>
           <div className="flex flex-wrap items-center gap-3">
             <button
-              className="inline-flex w-fit items-center justify-center rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+              className="inline-flex w-fit items-center justify-center gap-2 rounded-full border border-blue-300 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-800 shadow-sm hover:bg-blue-100"
               onClick={() => router.push("/uploads")}
               type="button"
             >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M11.78 4.22a.75.75 0 0 1 0 1.06L7.06 10l4.72 4.72a.75.75 0 1 1-1.06 1.06l-5.25-5.25a.75.75 0 0 1 0-1.06l5.25-5.25a.75.75 0 0 1 1.06 0Z"
+                  clipRule="evenodd"
+                />
+              </svg>
               Back to uploads
             </button>
             <button
