@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { storePostAuthRedirect } from "@/lib/authRedirect";
 import { supabaseClient } from "@/lib/supabaseClient";
 import type { Database } from "@/types/supabase";
 import TopNav from "@/components/TopNav";
@@ -128,6 +129,9 @@ export default function UploadsPage() {
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
+    storePostAuthRedirect(
+      `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    );
     const redirectTo = `${window.location.origin}/auth/callback`;
     const { error } = await supabaseClient.auth.signInWithOAuth({
       provider: "google",

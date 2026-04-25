@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { storePostAuthRedirect } from "@/lib/authRedirect";
 import type { Database } from "@/types/supabase";
 import TopNav from "@/components/TopNav";
 
@@ -212,6 +213,9 @@ export default function Home() {
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
+    storePostAuthRedirect(
+      `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    );
     const redirectTo = `${window.location.origin}/auth/callback`;
     const { error } = await supabaseClient.auth.signInWithOAuth({
       provider: "google",
