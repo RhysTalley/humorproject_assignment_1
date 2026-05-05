@@ -11,8 +11,6 @@ type AuthStatus = "loading" | "signedOut" | "signedIn";
 
 type ImageRow = Database["public"]["Tables"]["images"]["Row"];
 
-const HUMOR_FLAVOR_ID = 35;
-
 const allowedContentTypes = new Set([
   "image/jpeg",
   "image/jpg",
@@ -56,7 +54,7 @@ const generateCaptionsBatch = async (
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ imageId, humorFlavorId: HUMOR_FLAVOR_ID }),
+        body: JSON.stringify({ imageId }),
       },
     );
     responses.push(response);

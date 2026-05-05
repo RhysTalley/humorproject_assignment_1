@@ -13,8 +13,6 @@ type ImageRow = Database["public"]["Tables"]["images"]["Row"];
 
 type CaptionRow = Database["public"]["Tables"]["captions"]["Row"];
 
-const HUMOR_FLAVOR_ID = 35;
-
 const VOTE_STORAGE_KEY_PREFIX = "caption_votes_by_user";
 
 const getVoteStorageKey = (userId: string) =>
@@ -369,7 +367,7 @@ export default function UploadCaptionsPage() {
               Authorization: `Bearer ${session.access_token}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ imageId, humorFlavorId: HUMOR_FLAVOR_ID }),
+            body: JSON.stringify({ imageId }),
           },
         );
         responses.push(response);
