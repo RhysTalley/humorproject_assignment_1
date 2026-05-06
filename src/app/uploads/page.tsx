@@ -20,6 +20,8 @@ const allowedContentTypes = new Set([
   "image/heic",
 ]);
 
+const jpegContentTypes = new Set(["image/jpeg", "image/jpg"]);
+
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit) {
   const response = await fetch(input, init);
   if (!response.ok) {
@@ -32,6 +34,61 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit) {
 const getCaptionCountFromResponse = (response: unknown) => {
   if (Array.isArray(response)) return response.length;
   return 1;
+};
+
+const loadImageElement = (file: File) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(imageUrl);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(imageUrl);
+      reject(new Error("Could not read this JPEG file for upload."));
+    };
+
+    image.src = imageUrl;
+  });
+
+const normalizeUploadFile = async (file: File) => {
+  if (!jpegContentTypes.has(file.type)) {
+    return file;
+  }
+
+  const image = await loadImageElement(file);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Could not prepare this JPEG for upload.");
+  }
+
+  context.drawImage(image, 0, 0);
+
+  const normalizedBlob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Could not normalize this JPEG for upload."));
+          return;
+        }
+        resolve(blob);
+      },
+      "image/jpeg",
+      0.92,
+    );
+  });
+
+  return new File([normalizedBlob], file.name.replace(/\.(jpe?g)$/i, ".jpg"), {
+    type: "image/jpeg",
+    lastModified: file.lastModified,
+  });
 };
 
 const generateCaptionsBatch = async (
@@ -202,6 +259,12 @@ export default function UploadsPage() {
     setErrorMessage(null);
 
     try {
+      let uploadFile = file;
+      if (jpegContentTypes.has(file.type)) {
+        setStatusMessage("Normalizing JPEG...");
+        uploadFile = await normalizeUploadFile(file);
+      }
+
       const {
         data: { session },
         error: sessionError,
@@ -227,7 +290,7 @@ export default function UploadsPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contentType: file.type,
+          contentType: uploadFile.type,
         }),
       });
 
@@ -235,9 +298,9 @@ export default function UploadsPage() {
       const uploadResponse = await fetch(presignResponse.presignedUrl, {
         method: "PUT",
         headers: {
-          "Content-Type": file.type,
+          "Content-Type": uploadFile.type,
         },
-        body: file,
+        body: uploadFile,
       });
 
       if (!uploadResponse.ok) {
